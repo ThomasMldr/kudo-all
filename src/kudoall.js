@@ -1,107 +1,112 @@
-function getContainer() {
-    let container =  document.querySelector(".feed-header");
+const SELECTORS = {
+  FEED_HEADER: '.feed-header',
+  FEED_UI: '.feed-ui',
+  FEATURE_FEED: '.feature-feed',
+  FEED_FORM: 'form',
+  FEED_ENTRY: "[data-testid='web-feed-entry']",
+  ENTRY_HEADER: "[data-testid='entry-header']",
+  OWNER_LINK: "a[data-testid='owners-name']",
+  KUDOS_BUTTON: "[data-testid='kudos_button']",
+  UNFILLED_KUDOS: "svg[data-testid='unfilled_kudos']",
+  AVATAR: "a[data-testid='avatar-wrapper']",
+};
 
-    if (!container) {
-        let stravaContainer = document.querySelector(".feed-ui");
+export function getLoggedInAthleteId() {
+  const avatar = document.querySelector(SELECTORS.AVATAR);
+  if (!avatar?.href) return null;
+  const id = Number.parseInt(avatar.href.split('/').pop(), 10);
+  return Number.isNaN(id) ? null : id;
+}
 
-        if (null === stravaContainer) {
-            stravaContainer = document.querySelector(".feature-feed")
-        }
+function animateCount(el, total) {
+  const btn = el.closest('button');
+  if (btn) btn.disabled = true;
 
-        container = stravaContainer.parentElement.querySelector('form');
-        container.style.justifyContent = "space-between";
-        container.style.maxWidth = "100%";
+  let current = 0;
+  el.textContent = `0 / ${total}`;
 
-        const el = document.createElement("div");
-        el.classList.add("feed-header");
-        el.style.height = "40px";
-        container.append(el);
-        el.style.display = "flex";
-        el.style.justifyContent = "end";
+  const tick = () => {
+    current++;
+    el.textContent = `${current} / ${total}`;
+    if (current < total) {
+      setTimeout(tick, 60);
     } else {
-        container.style.display = "flex";
-        container.style.justifyContent = "space-between";
+      setTimeout(() => {
+        el.textContent = 'Kudo All';
+        if (btn) btn.disabled = false;
+      }, 2000);
     }
+  };
 
-    return document.querySelector(".feed-header");
+  setTimeout(tick, 60);
 }
 
-function createButton() {
-    const label = "Kudo All";
-
-    const navItem = document.createElement("div");
-    navItem.style.display = "flex";
-
-    const style = `
-    margin-top: 0;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    max-width: 200px;
-    float: right;
-`;
-
-    navItem.innerHTML = `
-    <button type="button" class="btn btn-default btn-sm empty" style="${style}">
-        <div class="app-icon icon-kudo" style="margin-right: 10px;">${label}</div>
-        <div class="ka-progress text-caption1">${label}</div>
+export function createButton() {
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('ka-button');
+  Object.assign(wrapper.style, {
+    position: 'fixed',
+    bottom: '24px',
+    right: '24px',
+    zIndex: '9999',
+  });
+  wrapper.innerHTML = `
+    <button type="button" class="btn btn-primary btn-sm" style="border-radius:24px;padding:10px 18px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.25);cursor:pointer;">
+      <div class="app-icon icon-kudo icon-white"></div>
+      <span class="ka-progress">Kudo All</span>
     </button>
-    `;
-
-    navItem.addEventListener("click", kudoAllHandler);
-
-    return navItem;
+  `.trim();
+  wrapper.addEventListener('click', (event) => {
+    const count = kudoAllHandler(event);
+    const progress = wrapper.querySelector('.ka-progress');
+    if (count > 0 && progress) animateCount(progress, count);
+  });
+  return wrapper;
 }
 
-function kudoAllHandler(event) {
-    event.preventDefault();
+export function kudoAllHandler(event) {
+  event?.preventDefault();
 
-    const athleteId = Number.parseInt(document.querySelector("a[data-testid='avatar-wrapper']").href.split('/').pop(), 10);
+  const athleteId = getLoggedInAthleteId();
+  let count = 0;
 
-    Array.from(document.querySelectorAll("[data-testid='web-feed-entry']")).forEach((entry) => {
-        Array.from(entry.querySelectorAll("[data-testid='entry-header']")).forEach((entryHeader) => {
-            const activity = entryHeader.parentElement;
+  document.querySelectorAll(SELECTORS.FEED_ENTRY).forEach((entry) => {
+    entry.querySelectorAll(SELECTORS.ENTRY_HEADER).forEach((entryHeader) => {
+      const activity = entryHeader.parentElement;
+      if (!activity) return;
 
-            if (!activity) {
-                return;
-            }
+      activity.querySelectorAll(SELECTORS.OWNER_LINK).forEach((link) => {
+        if (!link?.href) return;
 
-            Array.from(activity.querySelectorAll("a[data-testid='owners-name']")).forEach((link) => {
-                let feedAthleteId = -1;
-    
-                if (link && link.href) {
-                    feedAthleteId = Number.parseInt(link.href.split("/").pop(), 10);
-                }
-        
-                // My own activities
-                if (feedAthleteId === athleteId) {
-                    return;
-                }
-        
-                const btn = activity.querySelector("[data-testid='kudos_button']");
-        
-                if (!btn) {
-                    return;
-                }
-        
-                const svg = btn.querySelector("svg[data-testid='unfilled_kudos']");
-        
-                if (!svg) {
-                    return;
-                }
-        
-                btn.click();
-            });
-        });
+        const feedAthleteId = Number.parseInt(link.href.split('/').pop(), 10);
+        if (feedAthleteId === athleteId) return;
+
+        const btn = activity.querySelector(SELECTORS.KUDOS_BUTTON);
+        if (!btn) return;
+
+        if (!btn.querySelector(SELECTORS.UNFILLED_KUDOS)) return;
+
+        btn.click();
+        count++;
+      });
     });
+  });
+
+  return count;
 }
 
-setTimeout(() => {
-    const container = getContainer();
+export function buttonAlreadyInjected() {
+  return !!document.querySelector('.ka-button');
+}
 
-    if (container) {
-        container.append(createButton());
-    }
-}, 1000);
+export function init() {
+  const tryInject = () => {
+    if (buttonAlreadyInjected()) return;
+    document.body.append(createButton());
+  };
+
+  tryInject();
+
+  const observer = new MutationObserver(tryInject);
+  observer.observe(document.body, { childList: true, subtree: true });
+}
