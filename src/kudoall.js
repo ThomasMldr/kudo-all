@@ -1,171 +1,135 @@
-function getContainer() {
-    let container =  document.querySelector(".feed-header");
+const SELECTORS = {
+  FEED_HEADER: '.feed-header',
+  FEED_UI: '.feed-ui',
+  FEATURE_FEED: '.feature-feed',
+  FEED_FORM: 'form',
+  FEED_ENTRY: "[data-testid='web-feed-entry']",
+  ENTRY_HEADER: "[data-testid='entry-header']",
+  OWNER_LINK: "a[data-testid='owners-name']",
+  KUDOS_BUTTON: "[data-testid='kudos_button']",
+  UNFILLED_KUDOS: "svg[data-testid='unfilled_kudos']",
+  AVATAR: "a[data-testid='avatar-wrapper']",
+};
 
-    if (container) {
-        container.style.display = "flex";
-        container.style.justifyContent = "space-between";
+export function getLoggedInAthleteId() {
+  // Try multiple DOM sources for robustness across different Strava pages
+  const scriptPattern = /\bathlete_id\s*:\s*['"]?(\d+)|\bvar athleteId\s*=\s*(\d+)/;
+  for (const script of document.querySelectorAll('script:not([src])')) {
+    const match = script.textContent.match(scriptPattern);
+    if (match) return Number.parseInt(match[1] || match[2], 10);
+  }
+
+  const trainingLink = document.querySelector('a[href*="/athletes/"][href*="/training"]');
+  if (trainingLink) {
+    const match = trainingLink.href.match(/\/athletes\/(\d+)/);
+    if (match) return Number.parseInt(match[1], 10);
+  }
+
+  const profileLink = Array.from(document.querySelectorAll('a[href*="/athletes/"]'))
+    .find((l) => l.textContent.trim() === 'My Profile');
+  if (profileLink) {
+    const match = profileLink.href.match(/\/athletes\/(\d+)/);
+    if (match) return Number.parseInt(match[1], 10);
+  }
+
+  const avatar = document.querySelector(SELECTORS.AVATAR);
+  if (avatar?.href) {
+    const id = Number.parseInt(avatar.href.split('/').pop(), 10);
+    if (!Number.isNaN(id)) return id;
+  }
+
+  return null;
+}
+
+function animateCount(el, total) {
+  const btn = el.closest('button');
+  if (btn) btn.disabled = true;
+
+  let current = 0;
+  el.textContent = `0 / ${total}`;
+
+  const tick = () => {
+    current++;
+    el.textContent = `${current} / ${total}`;
+    if (current < total) {
+      setTimeout(tick, 60);
     } else {
-        let stravaContainer = document.querySelector(".feed-ui");
-
-        if (null === stravaContainer) {
-            stravaContainer = document.querySelector(".feature-feed")
-        }
-
-        if (null === stravaContainer) {
-            return null;
-        }
-
-        container = stravaContainer.parentElement.querySelector('form');
-        container.style.justifyContent = "space-between";
-        container.style.maxWidth = "100%";
-
-        const el = document.createElement("div");
-        el.classList.add("feed-header");
-        el.style.height = "40px";
-        container.append(el);
-        el.style.display = "flex";
-        el.style.justifyContent = "end";
+      setTimeout(() => {
+        el.textContent = 'Kudo All';
+        if (btn) btn.disabled = false;
+      }, 2000);
     }
+  };
 
-    return document.querySelector(".feed-header");
+  setTimeout(tick, 60);
 }
 
-function getClubContainer() {
-    const tabs = document.querySelector('div.spans11 ul.tabs');
-    if (!tabs) return null;
-
-    const li = document.createElement('li');
-    li.classList.add('right');
-    li.style.borderTop = '2px solid #dfdfe8';
-    tabs.appendChild(li);
-
-    return li;
-}
-
-function createButton() {
-    const label = "Kudo All";
-
-    const navItem = document.createElement("div");
-    navItem.style.display = "flex";
-
-    const style = `
-    margin-top: 0;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    max-width: 200px;
-    float: right;
-`;
-
-    navItem.innerHTML = `
-    <button type="button" class="btn btn-default btn-sm empty" style="${style}">
-        <div class="app-icon icon-kudo" style="margin-right: 10px;">${label}</div>
-        <div class="ka-progress text-caption1">${label}</div>
+export function createButton() {
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('ka-button');
+  Object.assign(wrapper.style, {
+    position: 'fixed',
+    bottom: '24px',
+    right: '24px',
+    zIndex: '9999',
+  });
+  wrapper.innerHTML = `
+    <button type="button" class="btn btn-primary btn-sm" style="border-radius:24px;padding:10px 18px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.25);cursor:pointer;">
+      <div class="app-icon icon-kudo icon-white"></div>
+      <span class="ka-progress">Kudo All</span>
     </button>
-    `;
-
-    navItem.addEventListener("click", kudoAllHandler);
-
-    return navItem;
+  `.trim();
+  wrapper.addEventListener('click', (event) => {
+    const count = kudoAllHandler(event);
+    const progress = wrapper.querySelector('.ka-progress');
+    if (count > 0 && progress) animateCount(progress, count);
+  });
+  return wrapper;
 }
 
-function createTabButton() {
-    const tab = document.createElement('a');
-    tab.classList.add('tab');
-    tab.style.cssText = 'background-color: #fff; border-left-color: #dfdfe8; border-right-color: #dfdfe8; padding-bottom: 10px; cursor: pointer;';
-    tab.innerHTML = '<span class="app-icon icon-kudo" style="display:inline-block;float:none;margin:0 6px 0 0;vertical-align:middle;height:14px;width:14px;"></span>Kudo All';
-    tab.addEventListener('click', kudoAllHandler);
-    return tab;
-}
+export function kudoAllHandler(event) {
+  event?.preventDefault();
 
-function kudoAllHandler(event) {
-    event.preventDefault();
+  const athleteId = getLoggedInAthleteId();
+  let count = 0;
 
-    const athleteId = getCurrentAthleteId();
+  document.querySelectorAll(SELECTORS.FEED_ENTRY).forEach((entry) => {
+    entry.querySelectorAll(SELECTORS.ENTRY_HEADER).forEach((entryHeader) => {
+      const activity = entryHeader.parentElement;
+      if (!activity) return;
 
-    Array.from(document.querySelectorAll("[data-testid='web-feed-entry']")).forEach((entry) => {
-        Array.from(entry.querySelectorAll("[data-testid='entry-header']")).forEach((entryHeader) => {
-            const activity = entryHeader.parentElement;
+      activity.querySelectorAll(SELECTORS.OWNER_LINK).forEach((link) => {
+        if (!link?.href) return;
 
-            if (!activity) {
-                return;
-            }
+        const feedAthleteId = Number.parseInt(link.href.split('/').pop(), 10);
+        if (feedAthleteId === athleteId) return;
 
-            Array.from(activity.querySelectorAll("a[data-testid='owners-name']")).forEach((link) => {
-                let feedAthleteId = -1;
+        const btn = activity.querySelector(SELECTORS.KUDOS_BUTTON);
+        if (!btn) return;
 
-                if (link?.href) {
-                    feedAthleteId = Number.parseInt(link.href.split("/").pop(), 10);
-                }
+        if (!btn.querySelector(SELECTORS.UNFILLED_KUDOS)) return;
 
-                // My own activities
-                if (athleteId !== null && feedAthleteId === athleteId) {
-                    return;
-                }
-
-                const btn = activity.querySelector("[data-testid='kudos_button']");
-
-                if (!btn) {
-                    return;
-                }
-
-                const svg = btn.querySelector("svg[data-testid='unfilled_kudos']");
-
-                if (!svg) {
-                    return;
-                }
-
-                btn.click();
-            });
-        });
+        btn.click();
+        count++;
+      });
     });
+  });
+
+  return count;
 }
 
-function getCurrentAthleteId() { //find athelete id from multiple possible places on various strava pages
-    const scriptPattern = /\bathlete_id\s*:\s*['"]?(\d+)|\bvar athleteId\s*=\s*(\d+)/;
-    for (const script of document.querySelectorAll('script:not([src])')) {
-        const match = script.textContent.match(scriptPattern);
-        if (match) return Number.parseInt(match[1] || match[2], 10);
-    }
-
-    const trainingLink = document.querySelector('a[href*="/athletes/"][href*="/training"]');
-    if (trainingLink) {
-        const match = trainingLink.href.match(/\/athletes\/(\d+)/);
-        if (match) return Number.parseInt(match[1], 10);
-    }
-
-    const profileLink = Array.from(document.querySelectorAll('a[href*="/athletes/"]'))
-        .find(l => l.textContent.trim() === 'My Profile');
-    if (profileLink) {
-        const match = profileLink.href.match(/\/athletes\/(\d+)/);
-        if (match) return Number.parseInt(match[1], 10);
-    }
-
-    const avatarLink = document.querySelector("a[data-testid='avatar-wrapper']");
-    if (avatarLink?.href) {
-        const id = Number.parseInt(avatarLink.href.split('/').pop(), 10);
-        if (!Number.isNaN(id)) return id;
-    }
-
-    return null;
+export function buttonAlreadyInjected() {
+  return !!document.querySelector('.ka-button');
 }
 
-function isClubFeed() {
-    return /\/clubs\/\d+\/recent_activity/.test(window.location.pathname);
-}
+export function init() {
+  const tryInject = () => {
+    if (buttonAlreadyInjected()) return;
+    document.body.append(createButton());
+  };
 
-setTimeout(() => {
-    if (isClubFeed()) {
-        const container = getClubContainer();
-        if (container) {
-            container.appendChild(createTabButton());
-        }
-    } else {
-        const container = getContainer();
-        if (container) {
-            container.appendChild(createButton());
-        }
-    }
-}, 1000);
+  tryInject();
+
+  const observer = new MutationObserver(tryInject);
+  observer.observe(document.body, { childList: true, subtree: true });
+}

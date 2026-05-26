@@ -1,40 +1,63 @@
-name: Makefile CI
+name: CI
 
 on:
   push:
-    # branches: [ master ]
     tags:
       - '*'
-  # pull_request:
-    # branches: [ master ]
 
 jobs:
-  build:
-
+  qa:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v2
-      
-    - name: Build Firefox
-      run: make build.firefox
-      
-    - name: Build Chrome
-      run: make build.chrome
-    
-    - name: Upload a Chrome Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: kudoall-chrome.zip
-        path: build/artefacts/kudoall-chrome.zip
-      
-    - name: Upload a Firefox Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: kudoall-firefox.zip
-        path: build/artefacts/kudoall-firefox.zip
-        
-    - uses: ncipollo/release-action@v1
-      with:
-        artifacts: "build/artefacts/kudoall-chrome.zip,build/artefacts/kudoall-firefox.zip"
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+  build:
+    needs: qa
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Firefox
+        run: make build.firefox
+
+      - name: Build Chrome
+        run: make build.chrome
+
+      - name: Upload Chrome artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kudoall-chrome.zip
+          path: build/artefacts/kudoall-chrome.zip
+
+      - name: Upload Firefox artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kudoall-firefox.zip
+          path: build/artefacts/kudoall-firefox.zip
+
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: "build/artefacts/kudoall-chrome.zip,build/artefacts/kudoall-firefox.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
